@@ -26,4 +26,3 @@ class Twister:
             offset = i * 5  # Reduced offset
             x = self.x + math.cos(self.rotation + i * 2) * offset
             y = self.y + math.sin(self.rotation + i * 2) * offset
-            pygame.draw.circle(screen, WHITE, (int(x), int(y)), 5 - i)
