@@ -2,7 +2,7 @@ import pygame
 import math
 import random
 
-# Initialize Pygame
+# Initialize Pygame test
 pygame.init()
 pygame.mixer.init()
 
