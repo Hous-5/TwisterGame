@@ -52,8 +52,8 @@ menu_click_sound = pygame.mixer.Sound('menu_click.wav')  # Replace with your men
 
 # Volume settings
 master_volume = 1.0
-music_volume = 0.5
-sfx_volume = 0.5
+music_volume = 0.2
+sfx_volume = 0.2
 
 def update_volumes():
     pygame.mixer.music.set_volume(master_volume * music_volume)
