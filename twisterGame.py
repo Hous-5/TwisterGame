@@ -7,9 +7,10 @@ pygame.init()
 pygame.mixer.init()
 
 # Constants
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 720
+SCREEN_HEIGHT = 1280
 FPS = 60
+BACKGROUND_COLOR = (30, 30, 30) # Dark Background Color
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
@@ -18,19 +19,29 @@ BLUE = (0, 0, 255)
 ORANGE = (255, 165, 0)
 PURPLE = (128, 0, 128)
 GREY = (200, 200, 200)
+LIGHT_GREY = (94, 94, 94) # Color for particles
 
 # Game settings
-RING_RADIUS = 250
+RING_RADIUS = min(SCREEN_WIDTH, SCREEN_HEIGHT) // 3
 PLAYER_RADIUS = 20
 DOT_RADIUS = 10
 PLAYER_SPEED = 4
 DOT_SPAWN_RATE = 10
 DIFFICULTY_INCREASE_RATE = 1.0002
+RING_THICKNESS = 13
 
 # Initialize the screen
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Twister Game")
 clock = pygame.time.Clock()
+
+# Load image assets
+player_image = pygame.image.load('Player.png').convert_alpha()
+twister_image = pygame.image.load('Center_Sun.png').convert_alpha()
+
+# Resize images if necessary
+player_image = pygame.transform.scale(player_image, (PLAYER_RADIUS*2.3, PLAYER_RADIUS*2.3))
+twister_image = pygame.transform.scale(twister_image, (170, 170))  # Adjust size as needed
 
 # Load sounds
 pygame.mixer.music.load('endlessmotion.mp3')  # Replace with your music file
@@ -57,8 +68,12 @@ pygame.mixer.music.play(-1)  # -1 means loop indefinitely
 class Player:
     def __init__(self):
         self.angle = 0
-        self.x = SCREEN_WIDTH // 2 + RING_RADIUS
-        self.y = SCREEN_HEIGHT // 2
+        self.update_position()
+        self.image = player_image
+
+    def update_position(self):
+        self.x = SCREEN_WIDTH // 2 + math.cos(self.angle) * RING_RADIUS
+        self.y = SCREEN_HEIGHT // 2 + math.sin(self.angle) * RING_RADIUS    
 
     def move(self, clockwise):
         speed = PLAYER_SPEED * difficulty_multiplier
@@ -66,11 +81,12 @@ class Player:
             self.angle += speed / RING_RADIUS
         else:
             self.angle -= speed / RING_RADIUS
-        self.x = SCREEN_WIDTH // 2 + math.cos(self.angle) * RING_RADIUS
-        self.y = SCREEN_HEIGHT // 2 + math.sin(self.angle) * RING_RADIUS
+        self.update_position()
 
     def draw(self):
-        pygame.draw.circle(screen, ORANGE, (int(self.x), int(self.y)), PLAYER_RADIUS)
+        # Calculate the position to center the image on the player's position
+        image_rect = self.image.get_rect(center=(int(self.x), int(self.y)))
+        screen.blit(self.image, image_rect)
 
 class Dot:
     def __init__(self):
@@ -97,36 +113,25 @@ class Twister:
     def __init__(self):
         self.x = SCREEN_WIDTH // 2
         self.y = SCREEN_HEIGHT // 2
-        self.radius = 30  # Reduced from 60
+        self.image = twister_image
         self.rotation = 0
-        self.whirlpool_points = []
-        for i in range(3):  # Reduced from 4
-            self.whirlpool_points.append(
-                [(r, 2 * math.pi * r / 20 + i * math.pi / 1.5) for r in range(0, 20, 2)]
-            )
+        self.rotation_speed = 0  # Adjust this value to change rotation speed
 
     def update(self):
-        self.rotation += 0.05
-        for spiral in self.whirlpool_points:
-            for i, (r, theta) in enumerate(spiral):
-                spiral[i] = (r, theta + 0.1)
+        self.rotation += self.rotation_speed
+        if self.rotation >= 360:
+            self.rotation -= 360
 
     def draw(self):
-        for spiral in self.whirlpool_points:
-            points = []
-            for r, theta in spiral:
-                x = self.x + r * math.cos(theta + self.rotation) * self.radius / 20
-                y = self.y + r * math.sin(theta + self.rotation) * self.radius / 20
-                points.append((int(x), int(y)))
-            if len(points) > 1:
-                pygame.draw.lines(screen, PURPLE, False, points, 2)
+        rotated_image = pygame.transform.rotate(self.image, self.rotation)
+        image_rect = rotated_image.get_rect(center=(self.x, self.y))
+        screen.blit(rotated_image, image_rect)
 
         # Draw central circles
         for i in range(2):  # Reduced from 3
             offset = i * 5  # Reduced offset
             x = self.x + math.cos(self.rotation + i * 2) * offset
             y = self.y + math.sin(self.rotation + i * 2) * offset
-            pygame.draw.circle(screen, PURPLE, (int(x), int(y)), self.radius - i * 10)
 
 class BackgroundParticle:
     def __init__(self):
@@ -144,15 +149,11 @@ class BackgroundParticle:
             self.y = random.randint(0, SCREEN_HEIGHT)
 
     def draw(self):
-        pygame.draw.circle(screen, PURPLE, (int(self.x), int(self.y)), self.size)
+        pygame.draw.circle(screen, LIGHT_GREY, (int(self.x), int(self.y)), self.size)
 
 def draw_background(time, particles):
-    # Gradient background
-    for y in range(SCREEN_HEIGHT):
-        r = int(20 + (y / SCREEN_HEIGHT) * 20)
-        g = int(10 + (y / SCREEN_HEIGHT) * 10)
-        b = int(40 + (y / SCREEN_HEIGHT) * 20)
-        pygame.draw.line(screen, (r, g, b), (0, y), (SCREEN_WIDTH, y))
+    # Dark Grey background
+    screen.fill(BACKGROUND_COLOR)
 
     # Draw and move particles
     for particle in particles:
@@ -230,6 +231,7 @@ game_state = "menu"
 
 # Game loop
 running = True
+menu_rects = []  # Initialize menu_rects as an empty list
 while running:
     time += 1
 
@@ -372,10 +374,11 @@ while running:
             difficulty_multiplier *= DIFFICULTY_INCREASE_RATE
 
         draw_background(time, background_particles)
-        pygame.draw.circle(screen, WHITE, (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), RING_RADIUS, 2)
+        pygame.draw.circle(screen, WHITE, (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), RING_RADIUS, RING_THICKNESS)
         for dot in dots:
             dot.draw()
         player.draw()
+        twister.update()
         twister.draw()
 
         font = pygame.font.Font(None, 36)
