@@ -9,6 +9,7 @@ from game_settings import *
 from sound_manager import SoundManager
 from game_menu import GameMenu
 from font_manager import FontManager
+from server_communication import server_comm
 
 class TwisterGame:
     def __init__(self):
@@ -26,6 +27,7 @@ class TwisterGame:
         self.game_menu = GameMenu(self.screen, self.sound_manager, self.font_manager)
         self.reset_game()
         self.player_name = ""
+        self.is_authenticated = False
 
     def calculate_scaling(self):
         # Calculate the scaling factor and position to maintain aspect ratio
@@ -58,6 +60,60 @@ class TwisterGame:
         self.background_particles = [BackgroundParticle() for _ in range(50)]
         print(f"Game reset. Score: {self.score}")  # Debug print
 
+    async def login_or_register(self):
+        print("Attempting to log in or register...")
+        username = self.player_name
+        password = "password"  # In a real game, you'd have a secure way to get this
+
+        # Try to login
+        print(f"Attempting to log in with username: {username}")
+        success, message = await server_comm.login(username, password)
+        if not success:
+            # If login fails, try to register
+            print("Login failed. Attempting to register.")
+            success, message = await server_comm.register(username, password)
+            if success:
+                print("Registration successful. Logging in.")
+                success, message = await server_comm.login(username, password)
+
+        if success:
+            print("Logged in successfully!")
+            self.is_authenticated = True
+            return True
+        else:
+            print(f"Authentication failed: {message}")
+            self.is_authenticated = False
+            return False
+
+    async def submit_game_score(self):
+        if not self.is_authenticated:
+            print("Not authenticated. Please log in to submit score.")
+            success = await self.login_or_register()
+            if not success:
+                print("Authentication failed. Unable to submit score.")
+                return
+
+        success, message = await server_comm.submit_score(self.score)
+        if success:
+            print("Score submitted successfully!")
+        else:
+            print(f"Failed to submit score: {message}")
+
+    async def display_player_stats(self):
+        if self.is_authenticated:
+            stats, error = await server_comm.get_player_stats()
+            if stats:
+                print(f"Player: {stats['username']}")
+                print(f"Games played: {stats['games_played']}")
+                print(f"Average score: {stats['average_score']:.2f}")
+                print(f"Highest score: {stats['highest_score']}")
+                # You would typically render this information on the screen
+                # instead of printing it
+            else:
+                print(f"Failed to get player stats: {error}")
+        else:
+            print("Not authenticated. Please log in to view stats.")
+
 
     def run(self):
         running = True
@@ -74,7 +130,9 @@ class TwisterGame:
                 elif game_state in ["main", "settings", "game_over", "leaderboard"]:
                     scaled_event = self.scale_event(event)
                     new_state = self.game_menu.handle_input(scaled_event)
-                    if new_state in ["game", "restart"]:
+                    if new_state == "login":
+                        asyncio.run(self.login_or_register())
+                    elif new_state in ["game", "restart"]:
                         self.reset_game()
                         game_state = "game"
                     else:
@@ -85,6 +143,7 @@ class TwisterGame:
                     self.handle_name_input(event)
                     if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
                         self.game_menu.set_player_score(self.player_name, self.score)
+                        asyncio.run(self.submit_game_score())
                         game_state = "game_over"
                         self.game_menu.set_game_over()
 
@@ -198,6 +257,7 @@ class TwisterGame:
         for particle in self.background_particles:
             particle.move()
             particle.draw(self.screen)
+
 
 if __name__ == "__main__":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
