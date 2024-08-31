@@ -58,30 +58,50 @@ def login():
         return jsonify({"access_token": access_token}), 200
     return jsonify({"error": "Invalid username or password"}), 401
 
+
 @app.route('/api/leaderboard', methods=['GET'])
 def get_leaderboard():
-    scores = db.session.query(User.username, db.func.max(Score.score).label('max_score')).\
-        join(Score).group_by(User.id).order_by(db.desc('max_score')).limit(10).all()
-    return jsonify([{'name': score.username, 'score': score.max_score} for score in scores])
+    try:
+        scores = db.session.query(User.username, db.func.max(Score.score).label('max_score')).\
+            join(Score).group_by(User.id).order_by(db.desc('max_score')).limit(10).all()
+        return jsonify([{'name': score.username, 'score': score.max_score} for score in scores])
+    except Exception as e:
+        error_traceback = traceback.format_exc()
+        app.logger.error(f"Error fetching leaderboard: {str(e)}\n{error_traceback}")
+        return jsonify({"error": "An error occurred while fetching the leaderboard", "details": str(e)}), 500
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True, port=5000)
 
 @app.route('/api/submit_score', methods=['POST'])
 @jwt_required()
 def submit_score():
-    data = request.json
-    if 'score' not in data:
-        return jsonify({"error": "Score is required"}), 400
-    
-    user_id = get_jwt_identity()
-    user = User.query.get(user_id)
-    
-    new_score = Score(user_id=user_id, score=data['score'])
-    db.session.add(new_score)
-    
-    user.games_played += 1
-    user.total_score += data['score']
-    
-    db.session.commit()
-    return jsonify({"message": "Score submitted successfully"}), 200
+    try:
+        data = request.json
+        if 'score' not in data or 'name' not in data:
+            return jsonify({"error": "Both name and score are required"}), 400
+        
+        user_id = get_jwt_identity()
+        user = User.query.get(user_id)
+        
+        new_score = Score(user_id=user_id, score=data['score'])
+        db.session.add(new_score)
+        
+        user.games_played += 1
+        user.total_score += data['score']
+        
+        # Update username if it's different
+        if user.username != data['name']:
+            user.username = data['name']
+        
+        db.session.commit()
+        return jsonify({"message": "Score submitted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error submitting score: {str(e)}")
+        return jsonify({"error": "An error occurred while submitting the score"}), 500
 
 @app.route('/api/player_stats', methods=['GET'])
 @jwt_required()

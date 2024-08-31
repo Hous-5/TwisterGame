@@ -93,11 +93,25 @@ class TwisterGame:
                 print("Authentication failed. Unable to submit score.")
                 return
 
-        success, message = await server_comm.submit_score(self.score)
+        success, message = await server_comm.submit_score(self.player_name, self.score)
         if success:
             print("Score submitted successfully!")
+            await self.fetch_leaderboard()
         else:
             print(f"Failed to submit score: {message}")
+
+    async def fetch_leaderboard(self):
+        print("Fetching leaderboard data...")
+        data, error = await server_comm.get_leaderboard()
+        if error is None:
+            self.game_menu.leaderboard_data = data
+            self.game_menu.leaderboard_error = None
+            print("Leaderboard data fetched successfully.")
+        else:
+            print(f"Failed to get leaderboard: {error}")
+            self.game_menu.leaderboard_data = []
+            self.game_menu.leaderboard_error = error
+
 
     async def display_player_stats(self):
         if self.is_authenticated:

@@ -38,32 +38,30 @@ class ServerCommunication:
                 async with session.get(f"{self.base_url}/leaderboard", timeout=5) as response:
                     if response.status == 200:
                         data = await response.json()
-                        return data
+                        return data, None
                     else:
-                        print(f"Failed to get leaderboard. Status: {response.status}")
-                        return []
+                        error_data = await response.json()
+                        return [], f"Server error: {response.status}, {error_data.get('error', 'Unknown error')}"
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            print(f"Error getting leaderboard: {str(e)}")
-            return []
+            return [], f"Connection error: {str(e)}"
 
-    async def submit_score(self, score):
+    async def submit_score(self, player_name, score):
         if not self.access_token:
             return False, "Not authenticated"
         
         try:
             headers = {"Authorization": f"Bearer {self.access_token}"}
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.base_url}/submit_score", json={"score": score}, headers=headers, timeout=5) as response:
+                async with session.post(f"{self.base_url}/submit_score", 
+                                        json={"name": player_name, "score": score}, 
+                                        headers=headers, 
+                                        timeout=5) as response:
                     if response.status == 200:
                         return True, "Score submitted successfully"
                     else:
-                        try:
-                            data = await response.json()
-                            return False, data.get("error", "Failed to submit score")
-                        except aiohttp.ContentTypeError:
-                            text = await response.text()
-                            return False, f"Server error: {response.status}, {text[:100]}..."
+                        error_data = await response.json()
+                        return False, f"Server error: {response.status}, {error_data.get('error', 'Unknown error')}"
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            return False, str(e)
+            return False, f"Connection error: {str(e)}"
 
 server_comm = ServerCommunication("http://127.0.0.1:5000/api")

@@ -191,31 +191,24 @@ class GameMenu:
         title_rect = title.get_rect(center=(GAME_WIDTH // 2, 50))
         self.screen.blit(title, title_rect)
 
-        print(f"Drawing leaderboard. Current data: {self.leaderboard_data}")  # Debug print
-
         if self.leaderboard_error:
             error_text = font.render(self.leaderboard_error, True, RED)
             error_rect = error_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2))
             self.screen.blit(error_text, error_rect)
+        elif not self.leaderboard_data:
+            no_data_text = font.render("No leaderboard data available", True, WHITE)
+            no_data_rect = no_data_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2))
+            self.screen.blit(no_data_text, no_data_rect)
         else:
             start_y = 100
             for i, entry in enumerate(self.leaderboard_data):
-                if isinstance(entry, dict):
+                if isinstance(entry, dict) and 'name' in entry and 'score' in entry:
                     name, score = entry['name'], entry['score']
-                elif isinstance(entry, (list, tuple)) and len(entry) == 2:
-                    name, score = entry
+                    text = font.render(f"{i+1}. {name}: {score}", True, WHITE)
+                    text_rect = text.get_rect(center=(GAME_WIDTH // 2, start_y + i * 40))
+                    self.screen.blit(text, text_rect)
                 else:
-                    print(f"Unexpected leaderboard entry format: {entry}")  # Debug print
-                    continue
-                
-                text = font.render(f"{i+1}. {name}: {score}", True, WHITE)
-                text_rect = text.get_rect(center=(GAME_WIDTH // 2, start_y + i * 40))
-                self.screen.blit(text, text_rect)
-
-        if self.submission_message and self.submission_message_timer > 0:
-            message_text = font.render(self.submission_message, True, GREEN)
-            message_rect = message_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT - 100))
-            self.screen.blit(message_text, message_rect)
+                    print(f"Unexpected leaderboard entry format: {entry}")
 
         # Draw "Back to Main Menu" button
         back_rect = self.get_item_rect(0)  # There's only one item in leaderboard_items
