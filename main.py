@@ -122,15 +122,39 @@ class TwisterGame:
 
     async def fetch_leaderboard(self):
         self.logger.info("Fetching leaderboard data...")
-        data, error = await server_comm.get_leaderboard()
-        if error is None:
-            self.game_menu.leaderboard_data = data
-            self.game_menu.leaderboard_error = None
-            self.logger.info("Leaderboard data fetched successfully.")
-        else:
-            self.logger.error(f"Failed to get leaderboard: {error}")
+        try:
+            result = await server_comm.get_leaderboard()
+            self.logger.info(f"Raw result from get_leaderboard: {result}")
+            
+            if isinstance(result, tuple) and len(result) == 2:
+                data, error = result
+                if error is None:
+                    # Unwrap the nested list
+                    if isinstance(data, list) and len(data) > 0:
+                        if isinstance(data[0], list):
+                            data = data[0]
+                        self.game_menu.leaderboard_data = data
+                        self.game_menu.leaderboard_error = None
+                    else:
+                        self.game_menu.leaderboard_data = []
+                        self.game_menu.leaderboard_error = "Invalid data format"
+                    self.logger.info(f"Leaderboard data set in game_menu: {self.game_menu.leaderboard_data}")
+                else:
+                    self.logger.error(f"Error fetching leaderboard: {error}")
+                    self.game_menu.leaderboard_data = []
+                    self.game_menu.leaderboard_error = str(error) if error else "Unknown error"
+            else:
+                self.logger.error(f"Unexpected result format from get_leaderboard: {result}")
+                self.game_menu.leaderboard_data = []
+                self.game_menu.leaderboard_error = "Unexpected data format"
+            
+            self.logger.info(f"Final leaderboard_data in game_menu: {self.game_menu.leaderboard_data}")
+            self.logger.info(f"Final leaderboard_error in game_menu: {self.game_menu.leaderboard_error}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error while fetching leaderboard: {str(e)}")
+            self.logger.exception("Exception details:")
             self.game_menu.leaderboard_data = []
-            self.game_menu.leaderboard_error = error
+            self.game_menu.leaderboard_error = f"Unexpected error: {str(e)}"
 
     async def display_player_stats(self):
         if self.is_authenticated:
@@ -220,24 +244,6 @@ class TwisterGame:
             self.update_game()
         return game_state
 
-    def render_game_state(self, game_state):
-        if game_state in ["main", "settings", "game_over", "leaderboard"]:
-            self.game_menu.draw()
-        elif game_state == "game":
-            self.draw_game()
-        elif game_state == "enter_name":
-            self.draw_name_input()
-
-    def scale_event(self, event):
-        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
-            x, y = event.pos
-            scaled_x = (x - self.game_pos[0]) * (GAME_WIDTH / self.game_width)
-            scaled_y = (y - self.game_pos[1]) * (GAME_HEIGHT / self.game_height)
-            scaled_x = max(0, min(GAME_WIDTH, scaled_x))
-            scaled_y = max(0, min(GAME_HEIGHT, scaled_y))
-            return pygame.event.Event(event.type, {'pos': (scaled_x, scaled_y), 'button': getattr(event, 'button', None)})
-        return event
-
     def update_game(self):
         self.player.move(self.clockwise, self.difficulty_multiplier)
         self.update_dots()
@@ -273,6 +279,14 @@ class TwisterGame:
             self.dots.append(Dot())
             self.frames_since_last_spawn = 0
 
+    def render_game_state(self, game_state):
+        if game_state in ["main", "settings", "game_over", "leaderboard"]:
+            self.game_menu.draw()
+        elif game_state == "game":
+            self.draw_game()
+        elif game_state == "enter_name":
+            self.draw_name_input()
+
     def draw_game(self):
         self.draw_background()
         pygame.draw.circle(self.screen, WHITE, (GAME_WIDTH // 2, GAME_HEIGHT // 2), RING_RADIUS, RING_THICKNESS)
@@ -306,6 +320,16 @@ class TwisterGame:
         name = font.render(self.player_name, True, WHITE)
         name_rect = name.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 + 50))
         self.screen.blit(name, name_rect)
+
+    def scale_event(self, event):
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+            x, y = event.pos
+            scaled_x = (x - self.game_pos[0]) * (GAME_WIDTH / self.game_width)
+            scaled_y = (y - self.game_pos[1]) * (GAME_HEIGHT / self.game_height)
+            scaled_x = max(0, min(GAME_WIDTH, scaled_x))
+            scaled_y = max(0, min(GAME_HEIGHT, scaled_y))
+            return pygame.event.Event(event.type, {'pos': (scaled_x, scaled_y), 'button': getattr(event, 'button', None)})
+        return event
 
 if __name__ == "__main__":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

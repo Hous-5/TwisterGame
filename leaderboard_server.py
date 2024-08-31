@@ -7,6 +7,8 @@ import os
 import traceback
 from datetime import timedelta
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text, select
+from flask_migrate import Migrate
 
 app = Flask(__name__)
 CORS(app)
@@ -20,6 +22,7 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=1)
 
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
+migrate = Migrate(app, db)
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -27,19 +30,12 @@ class User(db.Model):
     password_hash = db.Column(db.String(128), nullable=False)
     games_played = db.Column(db.Integer, default=0)
     total_score = db.Column(db.Integer, default=0)
+    scores = db.relationship('Score', backref='user', lazy=True)
 
 class Score(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     score = db.Column(db.Integer, nullable=False)
-
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    # Log the error
-    app.logger.error(f"Unhandled exception: {str(e)}\n{traceback.format_exc()}")
-    # Return JSON instead of HTML for HTTP errors
-    return jsonify(error=str(e), stack_trace=traceback.format_exc()), 500
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -68,29 +64,45 @@ def login():
         return jsonify({"access_token": access_token}), 200
     return jsonify({"error": "Invalid username or password"}), 401
 
-
 @app.route('/api/leaderboard', methods=['GET'])
 def get_leaderboard():
     try:
         app.logger.info("Fetching leaderboard data...")
         
-        # Check database connection
-        try:
-            db.session.query("1").from_statement("SELECT 1").all()
-            app.logger.info("Database connection successful")
-        except SQLAlchemyError as e:
-            app.logger.error(f"Database connection error: {str(e)}")
-            return jsonify({"error": "Database connection error", "details": str(e)}), 500
-
         # Fetch leaderboard data
         scores = db.session.query(User.username, db.func.max(Score.score).label('max_score')).\
             join(Score).group_by(User.id).order_by(db.desc('max_score')).limit(10).all()
         
         app.logger.info(f"Leaderboard data fetched: {scores}")
         return jsonify([{'name': score.username, 'score': score.max_score} for score in scores])
+    except SQLAlchemyError as e:
+        app.logger.error(f"Database error: {str(e)}")
+        app.logger.error(f"Error type: {type(e).__name__}")
+        app.logger.error(f"Error traceback: {traceback.format_exc()}")
+        return jsonify({"error": "Database error", "details": str(e)}), 500
     except Exception as e:
-        app.logger.error(f"Error fetching leaderboard: {str(e)}\n{traceback.format_exc()}")
-        return jsonify({"error": "An error occurred while fetching the leaderboard", "details": str(e), "stack_trace": traceback.format_exc()}), 500
+        app.logger.error(f"Unexpected error: {str(e)}")
+        app.logger.error(f"Error type: {type(e).__name__}")
+        app.logger.error(f"Error traceback: {traceback.format_exc()}")
+        return jsonify({"error": "An unexpected error occurred", "details": str(e), "stack_trace": traceback.format_exc()}), 500
+
+@app.route('/api/submit_score', methods=['POST'])
+@jwt_required()
+def submit_score():
+    data = request.json
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    
+    new_score = Score(user_id=user.id, score=data['score'])
+    db.session.add(new_score)
+    user.games_played += 1
+    user.total_score += data['score']
+    db.session.commit()
+    
+    return jsonify({"message": "Score submitted successfully"}), 200
 
 @app.route('/api/player_stats', methods=['GET'])
 @jwt_required()

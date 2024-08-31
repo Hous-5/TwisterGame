@@ -2,6 +2,7 @@ import pygame
 from game_settings import *
 from server_communication import server_comm
 import asyncio
+import logging
 
 class GameMenu:
     def __init__(self, screen, sound_manager, font_manager):
@@ -22,6 +23,7 @@ class GameMenu:
         self.loop = asyncio.get_event_loop()
         self.submission_message = ""
         self.submission_message_timer = 0
+        self.logger = logging.getLogger(__name__)
 
     def handle_input(self, event):
         if event.type == pygame.KEYDOWN:
@@ -185,30 +187,41 @@ class GameMenu:
                 text_rect.center = (GAME_WIDTH // 2, text_rect.centery)
                 self.screen.blit(text, text_rect)
 
+    def set_leaderboard_data(self, data):
+        if isinstance(data, list):
+            self.leaderboard_data = data
+        else:
+            self.logger.warning(f"Unexpected leaderboard data format: {data}")
+            self.leaderboard_data = []
+
     def draw_leaderboard(self, font):
+        self.logger.info(f"Drawing leaderboard. Data: {self.leaderboard_data}")
         self.screen.fill(BLACK)
         title = font.render("Leaderboard", True, WHITE)
         title_rect = title.get_rect(center=(GAME_WIDTH // 2, 50))
         self.screen.blit(title, title_rect)
 
         if self.leaderboard_error:
+            self.logger.warning(f"Leaderboard error: {self.leaderboard_error}")
             error_text = font.render(self.leaderboard_error, True, RED)
             error_rect = error_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2))
             self.screen.blit(error_text, error_rect)
         elif not self.leaderboard_data:
+            self.logger.warning("No leaderboard data available")
             no_data_text = font.render("No leaderboard data available", True, WHITE)
             no_data_rect = no_data_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2))
             self.screen.blit(no_data_text, no_data_rect)
         else:
             start_y = 100
             for i, entry in enumerate(self.leaderboard_data):
+                self.logger.info(f"Drawing entry: {entry}")
                 if isinstance(entry, dict) and 'name' in entry and 'score' in entry:
                     name, score = entry['name'], entry['score']
                     text = font.render(f"{i+1}. {name}: {score}", True, WHITE)
                     text_rect = text.get_rect(center=(GAME_WIDTH // 2, start_y + i * 40))
                     self.screen.blit(text, text_rect)
                 else:
-                    print(f"Unexpected leaderboard entry format: {entry}")
+                    self.logger.warning(f"Unexpected leaderboard entry format: {entry}")
 
         # Draw "Back to Main Menu" button
         back_rect = self.get_item_rect(0)  # There's only one item in leaderboard_items
