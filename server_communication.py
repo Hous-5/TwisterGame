@@ -1,6 +1,10 @@
 import aiohttp
 import asyncio
+import json
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 class ServerCommunication:
     def __init__(self, base_url):
         self.base_url = base_url
@@ -40,9 +44,18 @@ class ServerCommunication:
                         data = await response.json()
                         return data, None
                     else:
-                        error_data = await response.json()
-                        return [], f"Server error: {response.status}, {error_data.get('error', 'Unknown error')}"
+                        try:
+                            error_data = await response.json()
+                            error_message = error_data.get('error', 'Unknown error')
+                            error_details = error_data.get('details', '')
+                            error_stack_trace = error_data.get('stack_trace', '')
+                            logger.error(f"Server error: {error_message}\nDetails: {error_details}\nStack trace: {error_stack_trace}")
+                        except json.JSONDecodeError:
+                            error_message = await response.text()
+                            logger.error(f"Failed to decode JSON response: {error_message}")
+                        return [], f"Server error: {response.status}, {error_message}"
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            logger.error(f"Connection error: {str(e)}")
             return [], f"Connection error: {str(e)}"
 
     async def submit_score(self, player_name, score):

@@ -4,7 +4,9 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import traceback
 from datetime import timedelta
+from sqlalchemy.exc import SQLAlchemyError
 
 app = Flask(__name__)
 CORS(app)
@@ -30,6 +32,14 @@ class Score(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     score = db.Column(db.Integer, nullable=False)
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    # Log the error
+    app.logger.error(f"Unhandled exception: {str(e)}\n{traceback.format_exc()}")
+    # Return JSON instead of HTML for HTTP errors
+    return jsonify(error=str(e), stack_trace=traceback.format_exc()), 500
 
 @app.route('/api/register', methods=['POST'])
 def register():
@@ -62,46 +72,25 @@ def login():
 @app.route('/api/leaderboard', methods=['GET'])
 def get_leaderboard():
     try:
+        app.logger.info("Fetching leaderboard data...")
+        
+        # Check database connection
+        try:
+            db.session.query("1").from_statement("SELECT 1").all()
+            app.logger.info("Database connection successful")
+        except SQLAlchemyError as e:
+            app.logger.error(f"Database connection error: {str(e)}")
+            return jsonify({"error": "Database connection error", "details": str(e)}), 500
+
+        # Fetch leaderboard data
         scores = db.session.query(User.username, db.func.max(Score.score).label('max_score')).\
             join(Score).group_by(User.id).order_by(db.desc('max_score')).limit(10).all()
+        
+        app.logger.info(f"Leaderboard data fetched: {scores}")
         return jsonify([{'name': score.username, 'score': score.max_score} for score in scores])
     except Exception as e:
-        error_traceback = traceback.format_exc()
-        app.logger.error(f"Error fetching leaderboard: {str(e)}\n{error_traceback}")
-        return jsonify({"error": "An error occurred while fetching the leaderboard", "details": str(e)}), 500
-
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-    app.run(debug=True, port=5000)
-
-@app.route('/api/submit_score', methods=['POST'])
-@jwt_required()
-def submit_score():
-    try:
-        data = request.json
-        if 'score' not in data or 'name' not in data:
-            return jsonify({"error": "Both name and score are required"}), 400
-        
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
-        
-        new_score = Score(user_id=user_id, score=data['score'])
-        db.session.add(new_score)
-        
-        user.games_played += 1
-        user.total_score += data['score']
-        
-        # Update username if it's different
-        if user.username != data['name']:
-            user.username = data['name']
-        
-        db.session.commit()
-        return jsonify({"message": "Score submitted successfully"}), 200
-    except Exception as e:
-        db.session.rollback()
-        app.logger.error(f"Error submitting score: {str(e)}")
-        return jsonify({"error": "An error occurred while submitting the score"}), 500
+        app.logger.error(f"Error fetching leaderboard: {str(e)}\n{traceback.format_exc()}")
+        return jsonify({"error": "An error occurred while fetching the leaderboard", "details": str(e), "stack_trace": traceback.format_exc()}), 500
 
 @app.route('/api/player_stats', methods=['GET'])
 @jwt_required()

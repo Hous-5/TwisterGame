@@ -1,6 +1,7 @@
 import pygame
 import random
 import asyncio
+import logging
 from player import Player
 from dot import Dot
 from twister import Twister
@@ -28,6 +29,7 @@ class TwisterGame:
         self.reset_game()
         self.player_name = ""
         self.is_authenticated = False
+        logger = logging.getLogger(__name__)
 
     def calculate_scaling(self):
         # Calculate the scaling factor and position to maintain aspect ratio
@@ -101,14 +103,14 @@ class TwisterGame:
             print(f"Failed to submit score: {message}")
 
     async def fetch_leaderboard(self):
-        print("Fetching leaderboard data...")
+        self.logger.info("Fetching leaderboard data...")
         data, error = await server_comm.get_leaderboard()
         if error is None:
             self.game_menu.leaderboard_data = data
             self.game_menu.leaderboard_error = None
-            print("Leaderboard data fetched successfully.")
+            self.logger.info("Leaderboard data fetched successfully.")
         else:
-            print(f"Failed to get leaderboard: {error}")
+            self.logger.error(f"Failed to get leaderboard: {error}")
             self.game_menu.leaderboard_data = []
             self.game_menu.leaderboard_error = error
 
