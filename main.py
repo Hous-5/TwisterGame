@@ -1,22 +1,50 @@
 import pygame
 import random
+import asyncio
 from player import Player
 from dot import Dot
 from twister import Twister
 from background_particle import BackgroundParticle
 from game_settings import *
 from sound_manager import SoundManager
+from game_menu import GameMenu
+from font_manager import FontManager
 
 class TwisterGame:
     def __init__(self):
         pygame.init()
         pygame.mixer.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.real_screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.screen_width, self.screen_height = self.real_screen.get_size()
+        self.screen = pygame.Surface((GAME_WIDTH, GAME_HEIGHT))
         pygame.display.set_caption("Twister Game")
         self.clock = pygame.time.Clock()
         self.sound_manager = SoundManager()
+        self.font_manager = FontManager(FONT_FILE)
+        self.calculate_scaling()
+        self.loop = asyncio.get_event_loop()
+        self.game_menu = GameMenu(self.screen, self.sound_manager, self.font_manager)
         self.reset_game()
+        self.player_name = ""
 
+    def calculate_scaling(self):
+        # Calculate the scaling factor and position to maintain aspect ratio
+        screen_aspect_ratio = self.screen_width / self.screen_height
+        game_aspect_ratio = GAME_WIDTH / GAME_HEIGHT
+
+        if screen_aspect_ratio > game_aspect_ratio:
+            self.game_height = self.screen_height
+            self.game_width = int(self.game_height * game_aspect_ratio)
+        else:
+            self.game_width = self.screen_width
+            self.game_height = int(self.game_width / game_aspect_ratio)
+
+        self.scale_factor = self.game_height / GAME_HEIGHT
+        self.game_pos = ((self.screen_width - self.game_width) // 2, 
+                         (self.screen_height - self.game_height) // 2)
+        
+        self.font_manager.update_scale_factor(self.scale_factor)
+    
     def reset_game(self):
         self.player = Player()
         self.dots = []
@@ -28,147 +56,94 @@ class TwisterGame:
         self.frames_since_last_spawn = 0
         self.time = 0
         self.background_particles = [BackgroundParticle() for _ in range(50)]
+        print(f"Game reset. Score: {self.score}")  # Debug print
+
 
     def run(self):
         running = True
-        game_state = "menu"
-        menu_items = ["Start Game", "Settings", "Quit"]
-        selected_item = -1
-        hovered_item = -1
+        game_state = "main"
 
         while running:
-            self.time += 1
-
+            self.clock.tick(FPS)
+            
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-                elif event.type == pygame.KEYDOWN:
-                    if game_state == "menu":
-                        game_state = self.handle_menu_input(event, menu_items, selected_item)
-                    elif game_state == "game":
-                        self.handle_game_input(event)
-                    elif game_state == "settings":
-                        game_state = self.handle_settings_input(event)
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left mouse button
-                        self.sound_manager.play_menu_click()
-                        if game_state == "menu":
-                            game_state = self.handle_menu_click(event, menu_items)
-                        elif game_state == "settings":
-                            game_state = self.handle_settings_click(event)
-                        elif game_state == "game" and self.game_over:
-                            game_state = "menu"
-                elif event.type == pygame.MOUSEMOTION:
-                    if game_state == "menu":
-                        hovered_item = self.handle_menu_hover(event, menu_items)
-                    elif game_state == "settings":
-                        hovered_item = self.handle_settings_hover(event)
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    running = False
+                elif game_state in ["main", "settings", "game_over", "leaderboard"]:
+                    scaled_event = self.scale_event(event)
+                    new_state = self.game_menu.handle_input(scaled_event)
+                    if new_state in ["game", "restart"]:
+                        self.reset_game()
+                        game_state = "game"
+                    else:
+                        game_state = new_state
+                elif game_state == "game":
+                    game_state = self.handle_game_input(self.scale_event(event))
+                elif game_state == "enter_name":
+                    self.handle_name_input(event)
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                        self.game_menu.set_player_score(self.player_name, self.score)
+                        game_state = "game_over"
+                        self.game_menu.set_game_over()
 
-            if game_state == "menu":
-                self.draw_menu(menu_items, selected_item, hovered_item)
-            elif game_state == "settings":
-                self.draw_settings(selected_item, hovered_item)
+            if game_state in ["main", "settings", "game_over", "leaderboard"]:
+                self.game_menu.update()
+                self.game_menu.draw()
             elif game_state == "game":
-                self.update_game()
+                new_state = self.update_game()
+                if new_state == "game_over":
+                    game_state = "enter_name"
                 self.draw_game()
+            elif game_state == "enter_name":
+                self.draw_name_input()
 
+            scaled_surface = pygame.transform.scale(self.screen, (self.game_width, self.game_height))
+            self.real_screen.fill((0, 0, 0))
+            self.real_screen.blit(scaled_surface, self.game_pos)
             pygame.display.flip()
-            self.clock.tick(FPS)
 
         pygame.quit()
 
-    def handle_menu_hover(self, event, menu_items):
-        for i, item in enumerate(menu_items):
-            text_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50 + i * 60, 200, 50)
-            if text_rect.collidepoint(event.pos):
-                return i
-        return -1
-
-    def handle_menu_input(self, event, menu_items, selected_item):
-        if event.key == pygame.K_UP:
-            selected_item = (selected_item - 1) % len(menu_items)
-            self.sound_manager.play_menu_select()
-        elif event.key == pygame.K_DOWN:
-            selected_item = (selected_item + 1) % len(menu_items)
-            self.sound_manager.play_menu_select()
-        elif event.key == pygame.K_RETURN:
-            self.sound_manager.play_menu_click()
-            if menu_items[selected_item] == "Start Game":
-                self.reset_game()
-                return "game"
-            elif menu_items[selected_item] == "Settings":
-                return "settings"
-            elif menu_items[selected_item] == "Quit":
-                pygame.quit()
-                quit()
-        return "menu"
-
+    def scale_event(self, event):
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+            x, y = event.pos
+            scaled_x = (x - self.game_pos[0]) * (GAME_WIDTH / self.game_width)
+            scaled_y = (y - self.game_pos[1]) * (GAME_HEIGHT / self.game_height)
+            scaled_x = max(0, min(GAME_WIDTH, scaled_x))
+            scaled_y = max(0, min(GAME_HEIGHT, scaled_y))
+            return pygame.event.Event(event.type, {'pos': (scaled_x, scaled_y), 'button': event.button if hasattr(event, 'button') else None})
+        return event
+    
     def handle_game_input(self, event):
-        if event.key == pygame.K_SPACE:
-            self.clockwise = not self.clockwise
-
-    def handle_settings_input(self, event):
-        if event.key == pygame.K_ESCAPE:
-            self.sound_manager.play_menu_click()
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                self.clockwise = not self.clockwise
+        elif event.type == pygame.MOUSEBUTTONDOWN and self.game_over:
             return "menu"
-        return "settings"
+        return "game"
 
-    def handle_menu_click(self, event, menu_items):
-        for i, item in enumerate(menu_items):
-            text_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50 + i * 60, 200, 50)
-            if text_rect.collidepoint(event.pos):
-                if item == "Start Game":
-                    self.reset_game()
-                    return "game"
-                elif item == "Settings":
-                    return "settings"
-                elif item == "Quit":
-                    pygame.quit()
-                    quit()
-        return "menu"
+    def handle_name_input(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_BACKSPACE:
+                self.player_name = self.player_name[:-1]
+            elif event.key == pygame.K_RETURN:
+                pass  # Handle in the main loop
+            elif len(self.player_name) < 10:  # Limit name length
+                self.player_name += event.unicode
 
-    def handle_settings_click(self, event):
-        volumes = [
-            ("Master Volume", self.sound_manager.master_volume),
-            ("Music Volume", self.sound_manager.music_volume),
-            ("SFX Volume", self.sound_manager.sfx_volume)
-        ]
+    def draw_name_input(self):
+        self.screen.fill(BLACK)
+        font = self.font_manager.get_font(BASE_FONT_SIZE)
         
-        for i, (label, value) in enumerate(volumes):
-            bar_rect = pygame.Rect(50, 140 + i * 100, 300, 20)
-            if bar_rect.collidepoint(event.pos):
-                new_value = (event.pos[0] - bar_rect.x) / bar_rect.width
-                if i == 0:
-                    self.sound_manager.set_master_volume(new_value)
-                elif i == 1:
-                    self.sound_manager.set_music_volume(new_value)
-                elif i == 2:
-                    self.sound_manager.set_sfx_volume(new_value)
-                return "settings"
+        prompt = font.render("Enter your name:", True, WHITE)
+        prompt_rect = prompt.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 - 50))
+        self.screen.blit(prompt, prompt_rect)
         
-        back_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 75, 200, 50)
-        if back_rect.collidepoint(event.pos):
-            return "menu"
-        
-        return "settings"
-
-    def handle_settings_hover(self, event):
-        volumes = [
-            ("Master Volume", self.sound_manager.master_volume),
-            ("Music Volume", self.sound_manager.music_volume),
-            ("SFX Volume", self.sound_manager.sfx_volume)
-        ]
-        
-        for i in range(len(volumes)):
-            bar_rect = pygame.Rect(50, 140 + i * 100, 300, 20)
-            if bar_rect.collidepoint(event.pos):
-                return i
-        
-        back_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 75, 200, 50)
-        if back_rect.collidepoint(event.pos):
-            return 3
-        
-        return -1
+        name = font.render(self.player_name, True, WHITE)
+        name_rect = name.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 + 50))
+        self.screen.blit(name, name_rect)
 
     def update_game(self):
         if not self.game_over:
@@ -181,11 +156,15 @@ class TwisterGame:
                 elif self.player.collides_with(dot):
                     if dot.good:
                         self.score += 1
+                        print(f"Score increased: {self.score}")  # Debug print
                         self.sound_manager.play_collect()
                         self.dots.remove(dot)
                     else:
                         self.game_over = True
                         self.sound_manager.play_game_over()
+                        self.game_menu.set_game_over()
+                        print(f"Game over. Final score: {self.score}")  # Debug print
+                        return "game_over"
 
             self.frames_since_last_spawn += 1
             if self.frames_since_last_spawn >= DOT_SPAWN_RATE:
@@ -194,21 +173,25 @@ class TwisterGame:
 
             self.difficulty_multiplier *= DIFFICULTY_INCREASE_RATE
 
+        if self.game_over:
+            self.sound_manager.play_game_over()
+            return "game_over"
+
+        return "game"
+
     def draw_game(self):
         self.draw_background()
-        pygame.draw.circle(self.screen, WHITE, (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), RING_RADIUS, RING_THICKNESS)
+        pygame.draw.circle(self.screen, WHITE, (GAME_WIDTH // 2, GAME_HEIGHT // 2), RING_RADIUS, RING_THICKNESS)
         for dot in self.dots:
             dot.draw(self.screen)
         self.player.draw(self.screen)
         self.twister.update()
         self.twister.draw(self.screen)
 
-        font = pygame.font.Font(None, 36)
+        font = self.font_manager.get_font(BASE_FONT_SIZE)
         score_text = font.render(f"Score: {self.score}", True, WHITE)
-        self.screen.blit(score_text, (10, 10))
-
-        if self.game_over:
-            self.draw_game_over()
+        score_rect = score_text.get_rect(midtop=(GAME_WIDTH // 8, 10))
+        self.screen.blit(score_text, score_rect)
 
     def draw_background(self):
         self.screen.fill(BACKGROUND_COLOR)
@@ -216,56 +199,7 @@ class TwisterGame:
             particle.move()
             particle.draw(self.screen)
 
-    def draw_menu(self, menu_items, selected_item, hovered_item):
-        self.screen.fill(BLACK)
-        font = pygame.font.Font(None, 48)
-        for i, item in enumerate(menu_items):
-            if i == selected_item:
-                color = ORANGE
-            elif i == hovered_item:
-                color = ORANGE
-            else:
-                color = WHITE
-            text = font.render(item, True, color)
-            text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50 + i * 60))
-            self.screen.blit(text, text_rect)
-
-    def draw_settings(self, selected_item, hovered_item):
-        self.screen.fill(BLACK)
-        font = pygame.font.Font(None, 36)
-        
-        volumes = [
-            ("Master Volume", self.sound_manager.master_volume),
-            ("Music Volume", self.sound_manager.music_volume),
-            ("SFX Volume", self.sound_manager.sfx_volume)
-        ]
-        
-        for i, (label, value) in enumerate(volumes):
-            if i == selected_item:
-                color = ORANGE
-            elif i == hovered_item:
-                color = ORANGE
-            else:
-                color = WHITE
-            text = font.render(label, True, color)
-            self.screen.blit(text, (50, 100 + i * 100))
-            
-            bar_rect = pygame.Rect(50, 140 + i * 100, 300, 20)
-            pygame.draw.rect(self.screen, GREY, bar_rect)
-            pygame.draw.rect(self.screen, color, (50, 140 + i * 100, 300 * value, 20))
-        
-        back_color = ORANGE if hovered_item == 3 else WHITE
-        back_text = font.render("Back to Menu", True, back_color)
-        back_rect = back_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50))
-        self.screen.blit(back_text, back_rect)
-
-    def draw_game_over(self):
-        font = pygame.font.Font(None, 72)
-        game_over_text = font.render("Game Over", True, WHITE)
-        restart_text = font.render("Click to Restart", True, WHITE)
-        self.screen.blit(game_over_text, (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2 - 36))
-        self.screen.blit(restart_text, (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 2 + 36))
-
 if __name__ == "__main__":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     game = TwisterGame()
     game.run()

@@ -10,8 +10,8 @@ class Player:
         self.image = pygame.transform.scale(self.image, (PLAYER_RADIUS*2.3, PLAYER_RADIUS*2.3))
 
     def update_position(self):
-        self.x = SCREEN_WIDTH // 2 + math.cos(self.angle) * RING_RADIUS
-        self.y = SCREEN_HEIGHT // 2 + math.sin(self.angle) * RING_RADIUS    
+        self.x = GAME_WIDTH // 2 + math.cos(self.angle) * RING_RADIUS
+        self.y = GAME_HEIGHT // 2 + math.sin(self.angle) * RING_RADIUS    
 
     def move(self, clockwise, difficulty_multiplier):
         speed = PLAYER_SPEED * difficulty_multiplier

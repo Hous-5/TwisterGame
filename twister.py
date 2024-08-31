@@ -4,10 +4,10 @@ from game_settings import *
 
 class Twister:
     def __init__(self):
-        self.x = SCREEN_WIDTH // 2
-        self.y = SCREEN_HEIGHT // 2
+        self.x = GAME_WIDTH // 2
+        self.y = GAME_HEIGHT // 2
         self.image = pygame.image.load('Center_Sun.png').convert_alpha()
-        self.image = pygame.transform.scale(self.image, (170, 170))  # Adjust size as needed
+        self.image = pygame.transform.scale(self.image, (140, 140))  # Adjust size as needed
         self.rotation = 0
         self.rotation_speed = 0  # Adjust this value to change rotation speed
 

@@ -11,8 +11,8 @@ class Dot:
         self.update_position()
 
     def update_position(self):
-        self.x = SCREEN_WIDTH // 2 + math.cos(self.angle) * self.distance
-        self.y = SCREEN_HEIGHT // 2 + math.sin(self.angle) * self.distance
+        self.x = GAME_WIDTH // 2 + math.cos(self.angle) * self.distance
+        self.y = GAME_HEIGHT // 2 + math.sin(self.angle) * self.distance
 
     def move(self, difficulty_multiplier):
         speed = PLAYER_SPEED * difficulty_multiplier
