@@ -4,9 +4,9 @@ class SoundManager:
     def __init__(self):
         pygame.mixer.init()
         self.load_sounds()
-        self.master_volume = 0.5
-        self.music_volume = 0.05
-        self.sfx_volume = 0.1
+        self.master_volume = 0.75
+        self.music_volume = 0.03
+        self.sfx_volume = 0.3
         self.update_volumes()
         pygame.mixer.music.play(-1)  # -1 means loop indefinitely
 
