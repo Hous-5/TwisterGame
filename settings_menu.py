@@ -13,6 +13,10 @@ class SettingsMenu:
         ]
         self.selected_setting = 0
         self.slider_rects = []
+        self.previous_state = None  # To store the state from which settings were accessed
+
+    def set_previous_state(self, state):
+        self.previous_state = state
 
     def handle_input(self, event):
         if event.type == pygame.KEYDOWN:
@@ -25,7 +29,7 @@ class SettingsMenu:
             elif event.key == pygame.K_RIGHT:
                 self.adjust_setting(0.1)
             elif event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
-                return "back"
+                return "return"
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 for i, rect in enumerate(self.slider_rects):
@@ -90,6 +94,6 @@ class SettingsMenu:
             
             self.slider_rects.append(slider_rect)
 
-        back_text = font.render("Press ESC or ENTER to go back", True, WHITE)
+        back_text = font.render("Press ESC or ENTER to return", True, WHITE)
         back_rect = back_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT - 50))
         self.screen.blit(back_text, back_rect)

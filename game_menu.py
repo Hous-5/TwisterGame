@@ -7,7 +7,7 @@ class GameMenu:
         self.sound_manager = sound_manager
         self.font_manager = font_manager
         self.menu_items = ["Start Game", "Settings", "Quit"]
-        self.selected_item = 0
+        self.selected_item = -1
         self.hovered_item = -1
         self.item_rects = []
 

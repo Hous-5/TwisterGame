@@ -9,6 +9,7 @@ from game_settings import *
 from sound_manager import SoundManager
 from game_menu import GameMenu
 from settings_menu import SettingsMenu
+from pause_menu import PauseMenu
 from font_manager import FontManager
 from server_communication import server_comm
 from power_up import PowerUpManager
@@ -20,6 +21,7 @@ class GameState:
     PLAYING = 1
     GAME_OVER = 2
     SETTINGS = 3
+    PAUSED = 4
 
 class TwisterGame:
     def __init__(self):
@@ -29,6 +31,7 @@ class TwisterGame:
         self.setup_game_components()
         self.initialize_game_state()
         self.state = GameState.MENU
+        self.previous_state = None
 
     def setup_logger(self):
         self.logger = logging.getLogger(__name__)
@@ -43,6 +46,8 @@ class TwisterGame:
         self.sound_manager = SoundManager()
         self.font_manager = FontManager(FONT_FILE)
         self.game_menu = GameMenu(self.screen, self.sound_manager, self.font_manager)
+        self.settings_menu = SettingsMenu(self.screen, self.sound_manager, self.font_manager)
+        self.pause_menu = PauseMenu(self.screen, self.sound_manager, self.font_manager)
         self.power_up_manager = PowerUpManager()
         self.achievement_manager = AchievementManager()
         self.particle_system = ParticleSystem()
@@ -75,10 +80,10 @@ class TwisterGame:
         self.font_manager = FontManager(FONT_FILE)
         self.game_menu = GameMenu(self.screen, self.sound_manager, self.font_manager)
         self.settings_menu = SettingsMenu(self.screen, self.sound_manager, self.font_manager)
+        self.pause_menu = PauseMenu(self.screen, self.sound_manager, self.font_manager)
         self.power_up_manager = PowerUpManager()
         self.achievement_manager = AchievementManager()
         self.particle_system = ParticleSystem()
-
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -88,12 +93,27 @@ class TwisterGame:
                 menu_action = self.handle_menu_event(event)
                 if menu_action == "quit":
                     return False
+                elif menu_action == "settings":
+                    self.previous_state = GameState.MENU
+                    self.state = GameState.SETTINGS
+                    self.settings_menu.set_previous_state(GameState.MENU)
             elif self.state == GameState.PLAYING:
                 self.handle_game_event(event)
             elif self.state == GameState.GAME_OVER:
                 self.handle_game_over_event(event)
             elif self.state == GameState.SETTINGS:
                 self.handle_settings_event(event)
+            elif self.state == GameState.PAUSED:
+                self.handle_pause_event(event)
+            
+            # Handle mouse motion events for all states
+            if event.type == pygame.MOUSEMOTION:
+                if self.state == GameState.PAUSED:
+                    self.pause_menu.handle_input(event)
+                elif self.state == GameState.SETTINGS:
+                    self.settings_menu.handle_input(event)
+                # Add similar handling for other menu states if needed
+        
         return True
 
     def handle_menu_event(self, event):
@@ -109,8 +129,22 @@ class TwisterGame:
 
     def handle_settings_event(self, event):
         action = self.settings_menu.handle_input(event)
-        if action == "back":
-            self.logger.info("Returning to main menu")
+        if action == "return":
+            if self.previous_state == GameState.PAUSED:
+                self.state = GameState.PLAYING
+            else:
+                self.state = self.previous_state or GameState.MENU
+            self.previous_state = None
+
+    def handle_pause_event(self, event):
+        action = self.pause_menu.handle_input(event)
+        if action == "resume":
+            self.state = GameState.PLAYING
+        elif action == "settings":
+            self.previous_state = GameState.PAUSED
+            self.state = GameState.SETTINGS
+            self.settings_menu.set_previous_state(GameState.PAUSED)
+        elif action == "quittomainmenu":
             self.state = GameState.MENU
 
     def update(self):
@@ -120,13 +154,15 @@ class TwisterGame:
             self.game_menu.update()
         elif self.state == GameState.SETTINGS:
             pass  # Settings menu doesn't need continuous updates
+        elif self.state == GameState.PAUSED:
+            pass  # Pause menu doesn't need continuous updates
 
     def handle_game_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 self.clockwise = not self.clockwise
             elif event.key == pygame.K_ESCAPE:
-                self.state = GameState.MENU
+                self.state = GameState.PAUSED
 
     def handle_game_over_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN or (event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN):
@@ -167,8 +203,6 @@ class TwisterGame:
             self.dots.append(Dot())
             self.frames_since_last_spawn = 0
 
-
-
     def render(self):
         self.screen.fill(BACKGROUND_COLOR)
         if self.state == GameState.MENU:
@@ -180,6 +214,9 @@ class TwisterGame:
             self.render_game_over()
         elif self.state == GameState.SETTINGS:
             self.settings_menu.draw()
+        elif self.state == GameState.PAUSED:
+            self.render_game()  # Render the game in the background
+            self.pause_menu.draw(self.screen)  # Draw pause menu on top
         
         pygame.display.flip()
 
