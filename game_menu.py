@@ -6,8 +6,8 @@ class GameMenu:
         self.screen = screen
         self.sound_manager = sound_manager
         self.font_manager = font_manager
-        self.menu_items = ["Start Game", "Settings", "Quit"]
-        self.selected_item = -1
+        self.menu_items = ["Start Game", "Settings", "Leaderboard", "Quit"]
+        self.selected_item = 0
         self.hovered_item = -1
         self.item_rects = []
 
@@ -55,6 +55,8 @@ class GameMenu:
             self.screen.blit(text, text_rect)
             self.item_rects.append(text_rect)
 
-        # Draw a rectangle around the hovered item
+        # Draw a rectangle around the selected or hovered item
         if self.hovered_item != -1:
             pygame.draw.rect(self.screen, ORANGE, self.item_rects[self.hovered_item], 2)
+        elif self.selected_item != -1:
+            pygame.draw.rect(self.screen, ORANGE, self.item_rects[self.selected_item], 2)

@@ -10,6 +10,7 @@ from sound_manager import SoundManager
 from game_menu import GameMenu
 from settings_menu import SettingsMenu
 from pause_menu import PauseMenu
+from leaderboard_menu import LeaderboardMenu
 from font_manager import FontManager
 from server_communication import server_comm
 from power_up import PowerUpManager
@@ -22,6 +23,7 @@ class GameState:
     GAME_OVER = 2
     SETTINGS = 3
     PAUSED = 4
+    LEADERBOARD = 5
 
 class TwisterGame:
     def __init__(self):
@@ -48,6 +50,7 @@ class TwisterGame:
         self.game_menu = GameMenu(self.screen, self.sound_manager, self.font_manager)
         self.settings_menu = SettingsMenu(self.screen, self.sound_manager, self.font_manager)
         self.pause_menu = PauseMenu(self.screen, self.sound_manager, self.font_manager)
+        self.leaderboard_menu = LeaderboardMenu(self.screen, self.font_manager, server_comm)
         self.power_up_manager = PowerUpManager()
         self.achievement_manager = AchievementManager()
         self.particle_system = ParticleSystem()
@@ -64,14 +67,14 @@ class TwisterGame:
         self.time = 0
         self.background_particles = [BackgroundParticle() for _ in range(50)]
 
-    def run(self):
+    async def run(self):
         running = True
         while running:
             self.clock.tick(FPS)
-            running = self.handle_events()
+            running = await self.handle_events()
             self.update()
             self.render()
-            pygame.display.flip()
+            await asyncio.sleep(0)  # Allow other async operations to run
         pygame.quit()
 
     def setup_game_components(self):
@@ -81,39 +84,50 @@ class TwisterGame:
         self.game_menu = GameMenu(self.screen, self.sound_manager, self.font_manager)
         self.settings_menu = SettingsMenu(self.screen, self.sound_manager, self.font_manager)
         self.pause_menu = PauseMenu(self.screen, self.sound_manager, self.font_manager)
+        self.leaderboard_menu = LeaderboardMenu(self.screen, self.font_manager, server_comm)
         self.power_up_manager = PowerUpManager()
         self.achievement_manager = AchievementManager()
         self.particle_system = ParticleSystem()
 
-    def handle_events(self):
+    async def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
             if self.state == GameState.MENU:
-                menu_action = self.handle_menu_event(event)
-                if menu_action == "quit":
-                    return False
+                menu_action = self.game_menu.handle_input(event)
+                if menu_action == "startgame":
+                    self.state = GameState.PLAYING
+                    self.initialize_game_state()
                 elif menu_action == "settings":
-                    self.previous_state = GameState.MENU
                     self.state = GameState.SETTINGS
-                    self.settings_menu.set_previous_state(GameState.MENU)
+                elif menu_action == "leaderboard":
+                    self.previous_state = GameState.MENU
+                    self.state = GameState.LEADERBOARD
+                    await self.leaderboard_menu.fetch_leaderboard()
+                elif menu_action == "quit":
+                    return False
             elif self.state == GameState.PLAYING:
                 self.handle_game_event(event)
             elif self.state == GameState.GAME_OVER:
                 self.handle_game_over_event(event)
             elif self.state == GameState.SETTINGS:
-                self.handle_settings_event(event)
+                settings_action = self.settings_menu.handle_input(event)
+                if settings_action == "return":
+                    self.state = self.previous_state or GameState.MENU
             elif self.state == GameState.PAUSED:
-                self.handle_pause_event(event)
-            
-            # Handle mouse motion events for all states
-            if event.type == pygame.MOUSEMOTION:
-                if self.state == GameState.PAUSED:
-                    self.pause_menu.handle_input(event)
-                elif self.state == GameState.SETTINGS:
-                    self.settings_menu.handle_input(event)
-                # Add similar handling for other menu states if needed
-        
+                pause_action = self.pause_menu.handle_input(event)
+                if pause_action == "resume":
+                    self.state = GameState.PLAYING
+                elif pause_action == "settings":
+                    self.previous_state = GameState.PAUSED
+                    self.state = GameState.SETTINGS
+                elif pause_action == "quittomainmenu":
+                    self.state = GameState.MENU
+            elif self.state == GameState.LEADERBOARD:
+                leaderboard_action = self.leaderboard_menu.handle_input(event)
+                if leaderboard_action == "back":
+                    self.state = self.previous_state or GameState.MENU
+
         return True
 
     def handle_menu_event(self, event):
@@ -165,8 +179,19 @@ class TwisterGame:
                 self.state = GameState.PAUSED
 
     def handle_game_over_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN or (event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # Left mouse button
             self.state = GameState.MENU
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            self.state = GameState.MENU
+    
+    async def submit_score(self):
+        success, message = await server_comm.submit_score(self.score)
+        if success:
+            print("Score submitted successfully!")
+            self.state = GameState.LEADERBOARD
+            await self.leaderboard_menu.fetch_leaderboard()
+        else:
+            print(f"Failed to submit score: {message}")
 
     def update_game(self):
         self.player.move(self.clockwise, self.difficulty_multiplier)
@@ -215,8 +240,10 @@ class TwisterGame:
         elif self.state == GameState.SETTINGS:
             self.settings_menu.draw()
         elif self.state == GameState.PAUSED:
-            self.render_game()  # Render the game in the background
-            self.pause_menu.draw(self.screen)  # Draw pause menu on top
+            self.render_game()
+            self.pause_menu.draw(self.screen)
+        elif self.state == GameState.LEADERBOARD:
+            self.leaderboard_menu.draw()
         
         pygame.display.flip()
 
@@ -241,23 +268,26 @@ class TwisterGame:
 
     def render_game_over(self):
         overlay = pygame.Surface((GAME_WIDTH, GAME_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 128))
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
         self.screen.blit(overlay, (0, 0))
 
         font = self.font_manager.get_font(BASE_FONT_SIZE * 2)
         game_over_text = font.render("Game Over", True, RED)
-        game_over_rect = game_over_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2))
+        game_over_rect = game_over_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 - 50))
         self.screen.blit(game_over_text, game_over_rect)
 
         font = self.font_manager.get_font(BASE_FONT_SIZE)
         score_text = font.render(f"Final Score: {self.score}", True, WHITE)
-        score_rect = score_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 + 50))
+        score_rect = score_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 + 20))
         self.screen.blit(score_text, score_rect)
 
-        restart_text = font.render("Click to return to menu", True, WHITE)
-        restart_rect = restart_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 + 100))
-        self.screen.blit(restart_text, restart_rect)
+        instruction_text = font.render("Click or press Enter to return to main menu", True, WHITE)
+        instruction_rect = instruction_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 + 70))
+        self.screen.blit(instruction_text, instruction_rect)
+
+async def main():
+    game = TwisterGame()
+    await game.run()
 
 if __name__ == "__main__":
-    game = TwisterGame()
-    game.run()
+    asyncio.run(main())
