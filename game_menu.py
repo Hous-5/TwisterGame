@@ -6,8 +6,8 @@ class GameMenu:
         self.screen = screen
         self.sound_manager = sound_manager
         self.font_manager = font_manager
-        self.menu_items = ["Start Game", "Settings", "Leaderboard", "Quit"]
-        self.selected_item = 0
+        self.menu_items = ["Start Game", "Settings", "Leaderboard", "Login", "Quit"]
+        self.selected_item = -1
         self.hovered_item = -1
         self.item_rects = []
 
@@ -39,12 +39,21 @@ class GameMenu:
     def update(self):
         pass  # Add any necessary updates here
 
-    def draw(self):
+    def draw(self, is_logged_in, username):
         self.screen.fill(BLACK)
         font = self.font_manager.get_font(BASE_FONT_SIZE * 2)
         title = font.render("Twister Game", True, WHITE)
         title_rect = title.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 4))
         self.screen.blit(title, title_rect)
+
+        if is_logged_in:
+            welcome_font = self.font_manager.get_font(BASE_FONT_SIZE)
+            welcome_text = welcome_font.render(f"Welcome, {username}!", True, WHITE)
+            welcome_rect = welcome_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 4 + 50))
+            self.screen.blit(welcome_text, welcome_rect)
+            self.menu_items[3] = "Logout"  # Change "Login" to "Logout"
+        else:
+            self.menu_items[3] = "Login"  # Ensure it says "Login" if not logged in
 
         font = self.font_manager.get_font(BASE_FONT_SIZE)
         self.item_rects = []

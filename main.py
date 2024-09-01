@@ -11,6 +11,7 @@ from game_menu import GameMenu
 from settings_menu import SettingsMenu
 from pause_menu import PauseMenu
 from leaderboard_menu import LeaderboardMenu
+from login_menu import LoginMenu
 from font_manager import FontManager
 from server_communication import server_comm
 from power_up import PowerUpManager
@@ -24,6 +25,7 @@ class GameState:
     SETTINGS = 3
     PAUSED = 4
     LEADERBOARD = 5
+    LOGIN = 6
 
 class TwisterGame:
     def __init__(self):
@@ -34,6 +36,9 @@ class TwisterGame:
         self.initialize_game_state()
         self.state = GameState.MENU
         self.previous_state = None
+        self.score_submitted = False
+        self.is_logged_in = False
+        self.username = ""
 
     def setup_logger(self):
         self.logger = logging.getLogger(__name__)
@@ -51,6 +56,7 @@ class TwisterGame:
         self.settings_menu = SettingsMenu(self.screen, self.sound_manager, self.font_manager)
         self.pause_menu = PauseMenu(self.screen, self.sound_manager, self.font_manager)
         self.leaderboard_menu = LeaderboardMenu(self.screen, self.font_manager, server_comm)
+        self.login_menu = LoginMenu(self.screen, self.font_manager, server_comm)
         self.power_up_manager = PowerUpManager()
         self.achievement_manager = AchievementManager()
         self.particle_system = ParticleSystem()
@@ -85,6 +91,7 @@ class TwisterGame:
         self.settings_menu = SettingsMenu(self.screen, self.sound_manager, self.font_manager)
         self.pause_menu = PauseMenu(self.screen, self.sound_manager, self.font_manager)
         self.leaderboard_menu = LeaderboardMenu(self.screen, self.font_manager, server_comm)
+        self.login_menu = LoginMenu(self.screen, self.font_manager, server_comm)
         self.power_up_manager = PowerUpManager()
         self.achievement_manager = AchievementManager()
         self.particle_system = ParticleSystem()
@@ -95,38 +102,46 @@ class TwisterGame:
                 return False
             if self.state == GameState.MENU:
                 menu_action = self.game_menu.handle_input(event)
-                if menu_action == "startgame":
+                if menu_action == "quit":
+                    return False
+                elif menu_action == "startgame":
                     self.state = GameState.PLAYING
                     self.initialize_game_state()
                 elif menu_action == "settings":
                     self.state = GameState.SETTINGS
                 elif menu_action == "leaderboard":
-                    self.previous_state = GameState.MENU
                     self.state = GameState.LEADERBOARD
                     await self.leaderboard_menu.fetch_leaderboard()
-                elif menu_action == "quit":
-                    return False
+                elif menu_action == "login":
+                    self.state = GameState.LOGIN
             elif self.state == GameState.PLAYING:
                 self.handle_game_event(event)
             elif self.state == GameState.GAME_OVER:
-                self.handle_game_over_event(event)
+                await self.handle_game_over_event(event)
             elif self.state == GameState.SETTINGS:
                 settings_action = self.settings_menu.handle_input(event)
-                if settings_action == "return":
-                    self.state = self.previous_state or GameState.MENU
+                if settings_action == "mainmenu":
+                    self.state = GameState.MENU
             elif self.state == GameState.PAUSED:
                 pause_action = self.pause_menu.handle_input(event)
                 if pause_action == "resume":
                     self.state = GameState.PLAYING
                 elif pause_action == "settings":
-                    self.previous_state = GameState.PAUSED
                     self.state = GameState.SETTINGS
-                elif pause_action == "quittomainmenu":
+                elif pause_action == "mainmenu":
                     self.state = GameState.MENU
             elif self.state == GameState.LEADERBOARD:
                 leaderboard_action = self.leaderboard_menu.handle_input(event)
-                if leaderboard_action == "back":
-                    self.state = self.previous_state or GameState.MENU
+                if leaderboard_action == "mainmenu":
+                    self.state = GameState.MENU
+            elif self.state == GameState.LOGIN:
+                login_action, username = await self.login_menu.handle_input(event)
+                if login_action == "success":
+                    self.is_logged_in = True
+                    self.username = username
+                    self.state = GameState.MENU
+                elif login_action == "back":
+                    self.state = GameState.MENU
 
         return True
 
@@ -178,20 +193,29 @@ class TwisterGame:
             elif event.key == pygame.K_ESCAPE:
                 self.state = GameState.PAUSED
 
-    def handle_game_over_event(self, event):
+    async def handle_game_over_event(self, event):
+        if not self.score_submitted:
+            await self.submit_score()
+            self.score_submitted = True
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # Left mouse button
             self.state = GameState.MENU
+            self.score_submitted = False
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
             self.state = GameState.MENU
-    
+            self.score_submitted = False
+
     async def submit_score(self):
+        if not self.is_logged_in:
+            self.logger.error("Cannot submit score: Not logged in")
+            return
+
         success, message = await server_comm.submit_score(self.score)
         if success:
-            print("Score submitted successfully!")
-            self.state = GameState.LEADERBOARD
+            self.logger.info("Score submitted successfully!")
             await self.leaderboard_menu.fetch_leaderboard()
         else:
-            print(f"Failed to submit score: {message}")
+            self.logger.error(f"Failed to submit score: {message}")
 
     def update_game(self):
         self.player.move(self.clockwise, self.difficulty_multiplier)
@@ -231,7 +255,7 @@ class TwisterGame:
     def render(self):
         self.screen.fill(BACKGROUND_COLOR)
         if self.state == GameState.MENU:
-            self.game_menu.draw()
+            self.game_menu.draw(self.is_logged_in, self.username)
         elif self.state == GameState.PLAYING:
             self.render_game()
         elif self.state == GameState.GAME_OVER:
@@ -244,6 +268,8 @@ class TwisterGame:
             self.pause_menu.draw(self.screen)
         elif self.state == GameState.LEADERBOARD:
             self.leaderboard_menu.draw()
+        elif self.state == GameState.LOGIN:
+            self.login_menu.draw()
         
         pygame.display.flip()
 

@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 class ServerCommunication:
@@ -13,29 +13,45 @@ class ServerCommunication:
 
     async def register(self, username, password):
         try:
+            logger.debug(f"Attempting to register user: {username}")
             async with aiohttp.ClientSession() as session:
                 async with session.post(f"{self.base_url}/register", json={"username": username, "password": password}) as response:
+                    logger.debug(f"Registration response status: {response.status}")
                     if response.status == 201:
-                        return True, "User registered successfully"
-                    else:
                         data = await response.json()
-                        return False, data.get("error", "Registration failed")
-        except aiohttp.ClientError as e:
-            return False, str(e)
+                        logger.info(f"Registration successful for user: {username}")
+                        return True, "Registration successful"
+                    else:
+                        error_data = await response.json()
+                        logger.warning(f"Registration failed. Server response: {error_data}")
+                        return False, error_data.get("error", "Registration failed")
+        except Exception as e:
+            logger.error(f"Unexpected error during registration: {str(e)}")
+            return False, f"Unexpected error: {str(e)}"
 
     async def login(self, username, password):
         try:
+            logger.debug(f"Attempting to login with username: {username}")
             async with aiohttp.ClientSession() as session:
                 async with session.post(f"{self.base_url}/login", json={"username": username, "password": password}) as response:
+                    logger.debug(f"Login response status: {response.status}")
                     if response.status == 200:
                         data = await response.json()
-                        self.access_token = data["access_token"]
-                        return True, "Login successful"
+                        logger.debug(f"Login response data: {data}")
+                        self.access_token = data.get("access_token")
+                        if self.access_token:
+                            logger.info("Login successful")
+                            return True, "Login successful"
+                        else:
+                            logger.warning("Login response didn't contain access token")
+                            return False, "Login response didn't contain access token"
                     else:
-                        data = await response.json()
-                        return False, data.get("error", "Login failed")
-        except aiohttp.ClientError as e:
-            return False, str(e)
+                        error_data = await response.json()
+                        logger.warning(f"Login failed. Server response: {error_data}")
+                        return False, error_data.get("error", "Login failed")
+        except Exception as e:
+            logger.error(f"Unexpected error during login: {str(e)}")
+            return False, f"Unexpected error: {str(e)}"
 
     async def get_leaderboard(self):
         try:

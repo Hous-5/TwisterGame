@@ -13,30 +13,48 @@ class SettingsMenu:
         ]
         self.selected_setting = 0
         self.slider_rects = []
-        self.previous_state = None  # To store the state from which settings were accessed
-
-    def set_previous_state(self, state):
-        self.previous_state = state
+        self.main_menu_button_rect = None
+        self.is_main_menu_button_selected = False
 
     def handle_input(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
-                self.selected_setting = (self.selected_setting - 1) % len(self.settings)
+                if self.is_main_menu_button_selected:
+                    self.is_main_menu_button_selected = False
+                    self.selected_setting = len(self.settings) - 1
+                else:
+                    self.selected_setting = (self.selected_setting - 1) % len(self.settings)
             elif event.key == pygame.K_DOWN:
-                self.selected_setting = (self.selected_setting + 1) % len(self.settings)
+                if self.selected_setting == len(self.settings) - 1:
+                    self.is_main_menu_button_selected = True
+                    self.selected_setting = -1
+                else:
+                    self.selected_setting = (self.selected_setting + 1) % len(self.settings)
             elif event.key == pygame.K_LEFT:
                 self.adjust_setting(-0.1)
             elif event.key == pygame.K_RIGHT:
                 self.adjust_setting(0.1)
-            elif event.key == pygame.K_ESCAPE or event.key == pygame.K_RETURN:
-                return "return"
+            elif event.key == pygame.K_RETURN:
+                if self.is_main_menu_button_selected:
+                    return "mainmenu"
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
+                if self.main_menu_button_rect and self.main_menu_button_rect.collidepoint(event.pos):
+                    return "mainmenu"
                 for i, rect in enumerate(self.slider_rects):
                     if rect.collidepoint(event.pos):
                         self.selected_setting = i
                         self.adjust_setting_to_mouse(event.pos, rect)
         elif event.type == pygame.MOUSEMOTION:
+            if self.main_menu_button_rect and self.main_menu_button_rect.collidepoint(event.pos):
+                self.is_main_menu_button_selected = True
+                self.selected_setting = -1
+            else:
+                self.is_main_menu_button_selected = False
+                for i, rect in enumerate(self.slider_rects):
+                    if rect.collidepoint(event.pos):
+                        self.selected_setting = i
+                        break
             if event.buttons[0]:  # Left mouse button held down
                 for i, rect in enumerate(self.slider_rects):
                     if rect.collidepoint(event.pos):
@@ -94,6 +112,8 @@ class SettingsMenu:
             
             self.slider_rects.append(slider_rect)
 
-        back_text = font.render("Press ESC or ENTER to return", True, WHITE)
-        back_rect = back_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT - 50))
-        self.screen.blit(back_text, back_rect)
+        # Draw Main Menu button
+        main_menu_text = font.render("Main Menu", True, ORANGE if self.is_main_menu_button_selected else WHITE)
+        self.main_menu_button_rect = main_menu_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT - 50))
+        pygame.draw.rect(self.screen, ORANGE if self.is_main_menu_button_selected else WHITE, self.main_menu_button_rect, 2)
+        self.screen.blit(main_menu_text, self.main_menu_button_rect)

@@ -9,6 +9,8 @@ class LeaderboardMenu:
         self.leaderboard_data = []
         self.loading = True
         self.error = None
+        self.main_menu_button_rect = None
+        self.is_main_menu_button_selected = False
 
     async def fetch_leaderboard(self):
         self.loading = True
@@ -21,8 +23,17 @@ class LeaderboardMenu:
             self.loading = False
 
     def handle_input(self, event):
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            return "back"
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:  # Left mouse button
+            if self.main_menu_button_rect and self.main_menu_button_rect.collidepoint(event.pos):
+                return "mainmenu"
+        elif event.type == pygame.MOUSEMOTION:
+            if self.main_menu_button_rect and self.main_menu_button_rect.collidepoint(event.pos):
+                self.is_main_menu_button_selected = True
+            else:
+                self.is_main_menu_button_selected = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                return "mainmenu"
         return None
 
     def draw(self):
@@ -48,6 +59,8 @@ class LeaderboardMenu:
                 text_rect = text.get_rect(left=100, top=100 + i * 40)
                 self.screen.blit(text, text_rect)
 
-        back_text = regular_font.render("Press ESC to go back", True, WHITE)
-        back_rect = back_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT - 50))
-        self.screen.blit(back_text, back_rect)
+        # Draw Main Menu button
+        main_menu_text = regular_font.render("Main Menu", True, ORANGE if self.is_main_menu_button_selected else WHITE)
+        self.main_menu_button_rect = main_menu_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT - 50))
+        pygame.draw.rect(self.screen, ORANGE if self.is_main_menu_button_selected else WHITE, self.main_menu_button_rect, 2)
+        self.screen.blit(main_menu_text, self.main_menu_button_rect)
