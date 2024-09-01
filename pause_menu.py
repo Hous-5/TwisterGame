@@ -1,12 +1,12 @@
 import pygame
 from game_settings import *
 
-class GameMenu:
+class PauseMenu:
     def __init__(self, screen, sound_manager, font_manager):
         self.screen = screen
         self.sound_manager = sound_manager
         self.font_manager = font_manager
-        self.menu_items = ["Start Game", "Settings", "Leaderboard", "Login", "Quit"]
+        self.menu_items = ["Resume", "Settings", "Quit to Main Menu"]
         self.selected_item = -1
         self.hovered_item = -1
         self.item_rects = []
@@ -22,6 +22,9 @@ class GameMenu:
             elif event.key == pygame.K_RETURN:
                 self.sound_manager.play_menu_click()
                 return self.menu_items[self.selected_item].lower().replace(" ", "")
+            elif event.key == pygame.K_ESCAPE:
+                self.sound_manager.play_menu_click()
+                return "resume"
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left mouse button
                 for i, rect in enumerate(self.item_rects):
@@ -36,24 +39,16 @@ class GameMenu:
                     break
         return None
 
-    def update(self):
-        pass  # Add any necessary updates here
+    def draw(self, game_surface):
+        # Create a semi-transparent overlay
+        overlay = pygame.Surface((GAME_WIDTH, GAME_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 128))  # Semi-transparent black
+        game_surface.blit(overlay, (0, 0))
 
-    def draw(self, is_logged_in, username):
-        self.screen.fill(BLACK)
         font = self.font_manager.get_font(BASE_FONT_SIZE * 2)
-        title = font.render("Twister Game", True, WHITE)
+        title = font.render("Paused", True, WHITE)
         title_rect = title.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 4))
-        self.screen.blit(title, title_rect)
-
-        if is_logged_in:
-            welcome_font = self.font_manager.get_font(BASE_FONT_SIZE)
-            welcome_text = welcome_font.render(f"Welcome, {username}!", True, WHITE)
-            welcome_rect = welcome_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 4 + 50))
-            self.screen.blit(welcome_text, welcome_rect)
-            self.menu_items[3] = "Logout"  # Change "Login" to "Logout"
-        else:
-            self.menu_items[3] = "Login"  # Ensure it says "Login" if not logged in
+        game_surface.blit(title, title_rect)
 
         font = self.font_manager.get_font(BASE_FONT_SIZE)
         self.item_rects = []
@@ -61,11 +56,16 @@ class GameMenu:
             color = ORANGE if i == self.selected_item or i == self.hovered_item else WHITE
             text = font.render(item, True, color)
             text_rect = text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT // 2 + i * 50))
-            self.screen.blit(text, text_rect)
+            game_surface.blit(text, text_rect)
             self.item_rects.append(text_rect)
 
         # Draw a rectangle around the selected or hovered item
         if self.hovered_item != -1:
-            pygame.draw.rect(self.screen, ORANGE, self.item_rects[self.hovered_item], 2)
+            pygame.draw.rect(game_surface, ORANGE, self.item_rects[self.hovered_item], 2)
         elif self.selected_item != -1:
-            pygame.draw.rect(self.screen, ORANGE, self.item_rects[self.selected_item], 2)
+            pygame.draw.rect(game_surface, ORANGE, self.item_rects[self.selected_item], 2)
+
+        # Add instruction for ESC key
+        esc_text = font.render("Press ESC to resume", True, WHITE)
+        esc_rect = esc_text.get_rect(center=(GAME_WIDTH // 2, GAME_HEIGHT - 50))
+        game_surface.blit(esc_text, esc_rect)
